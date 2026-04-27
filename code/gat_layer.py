@@ -25,8 +25,8 @@ class GATLayer(nn.Module):
 
     def _init_weights(self):
         nn.init.xavier_uniform_(self.W)
-        nn.init.xavier_uniform_(self.a_src)
-        nn.init.xavier_uniform_(self.a_dst)
+        nn.init.xavier_uniform_(self.a_src.unsqueeze(0))
+        nn.init.xavier_uniform_(self.a_dst.unsqueeze(0))
 
     def forward(self, x, edge_index):
         # x: [N, in_features]

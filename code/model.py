@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.utils import add_self_loops
-
 from gat_layer import GATLayer
 
 
@@ -13,6 +12,7 @@ class GAT(nn.Module):
         self.layer2 = GATLayer(64, num_classes, num_heads=1, dropout=dropout, concat=False)
 
     def forward(self, x, edge_index):
+        edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
         x = F.elu(self.layer1(x, edge_index))
         x = self.layer2(x, edge_index)
         return F.log_softmax(x, dim=1)
@@ -24,13 +24,11 @@ if __name__ == "__main__":
     def sanity_check():
         dataset = Planetoid(root="/tmp/Cora", name="Cora")
         data = dataset[0]
-        edge_index, _ = add_self_loops(data.edge_index, num_nodes=data.num_nodes)
-
         model = GAT(in_features=dataset.num_node_features, num_classes=dataset.num_classes)
         model.train()
 
         # Check 1: output shape
-        out = model(data.x, edge_index)
+        out = model(data.x, data.edge_index)
         expected_shape = (data.num_nodes, dataset.num_classes)
         if out.shape == expected_shape:
             print(f"PASSED shape: {tuple(out.shape)}")
