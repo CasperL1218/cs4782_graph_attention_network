@@ -11,7 +11,7 @@ from data_utils import load_dataset
 
 def train(dataset_name="Cora", num_runs=5, num_epochs=100000,
           lr=0.005, weight_decay=5e-4, patience=100, dropout=0.6,
-          data_root="/tmp/pyg_data"):
+          data_root="/tmp/pyg_data", checkpoint=None):
 
     data = load_dataset(name=dataset_name, root=data_root)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -85,6 +85,13 @@ def train(dataset_name="Cora", num_runs=5, num_epochs=100000,
         print(f"Run {run+1}/{num_runs} | Test Accuracy: {test_acc*100:.1f}%")
         test_accs.append(test_acc)
 
+        # Save best model from the last run if a path is given
+        if checkpoint and run == num_runs - 1:
+            import os
+            torch.save({"state_dict": best_state, "in_features": in_features,
+                        "num_classes": num_classes}, checkpoint)
+            print(f"Checkpoint saved → {checkpoint}")
+
     mean = np.mean(test_accs) * 100
     std = np.std(test_accs) * 100
     print(f"\nTest Accuracy over {num_runs} runs: {mean:.1f} ± {std:.1f}%")
@@ -98,6 +105,8 @@ if __name__ == "__main__":
     parser.add_argument("--runs", type=int, default=5)
     parser.add_argument("--epochs", type=int, default=100000)
     parser.add_argument("--patience", type=int, default=100)
+    parser.add_argument("--checkpoint", type=str, default=None,
+                        help="Path to save the best model (e.g. cora_best.pt)")
     args = parser.parse_args()
 
     train(
@@ -105,4 +114,5 @@ if __name__ == "__main__":
         num_runs=args.runs,
         num_epochs=args.epochs,
         patience=args.patience,
+        checkpoint=args.checkpoint,
     )

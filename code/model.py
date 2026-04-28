@@ -11,8 +11,13 @@ class GAT(nn.Module):
         self.layer1 = GATLayer(in_features, 8, num_heads=8, dropout=dropout, concat=True)
         self.layer2 = GATLayer(64, num_classes, num_heads=1, dropout=dropout, concat=False)
 
-    def forward(self, x, edge_index):
+    def forward(self, x, edge_index, return_attn=False):
         edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
+        if return_attn:
+            x, attn1, ei = self.layer1(x, edge_index, return_attn=True)
+            x = F.elu(x)
+            x, attn2, _ = self.layer2(x, edge_index, return_attn=True)
+            return F.log_softmax(x, dim=1), (attn1, ei), (attn2, ei)
         x = F.elu(self.layer1(x, edge_index))
         x = self.layer2(x, edge_index)
         return F.log_softmax(x, dim=1)
