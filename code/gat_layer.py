@@ -28,9 +28,9 @@ class GATLayer(nn.Module):
         nn.init.xavier_uniform_(self.a_src.unsqueeze(0))
         nn.init.xavier_uniform_(self.a_dst.unsqueeze(0))
 
-    def forward(self, x, edge_index):
+    def forward(self, x, edge_index, return_attn=False):
         # x: [N, in_features]
-        # edge_index: [2, E]
+        # edge_index: [2, E]  —  edge_index[0]=receiver, edge_index[1]=sender
         src, dst = edge_index[0], edge_index[1]
 
         x = self.feat_dropout(x)
@@ -49,7 +49,7 @@ class GATLayer(nn.Module):
         # Masked softmax over each node's neighborhood (indexed by source node)
         # softmax from PyG: normalises over index groups
         alpha = softmax(e, index=edge_index[0], num_nodes=x.size(0))  # [E, H]
-        alpha = self.attn_dropout(alpha)
+        alpha_dropped = self.attn_dropout(alpha)
 
         # Aggregate: weighted sum of neighbour features
         # h[dst]: [E, H, out_features]; alpha: [E, H, 1]
@@ -57,10 +57,14 @@ class GATLayer(nn.Module):
         out.scatter_add_(
             0,
             src.view(-1, 1, 1).expand(-1, self.num_heads, self.out_features),
-            alpha.unsqueeze(-1) * h[dst],
+            alpha_dropped.unsqueeze(-1) * h[dst],
         )
 
         if self.concat:
-            return out.view(x.size(0), self.num_heads * self.out_features)
+            features = out.view(x.size(0), self.num_heads * self.out_features)
         else:
-            return out.mean(dim=1)
+            features = out.mean(dim=1)
+
+        if return_attn:
+            return features, alpha, edge_index  # alpha pre-dropout: [E, H]
+        return features
