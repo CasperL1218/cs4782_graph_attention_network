@@ -439,6 +439,165 @@ def fig_stats(ei, alpha1, labels, out_path):
 
 
 # ---------------------------------------------------------------------------
+# Figure 4 helper: build 2-hop directed subgraph
+# ---------------------------------------------------------------------------
+
+def build_2hop_subgraph(center_node, ei, alpha1):
+    src = ei[0]
+    dst = ei[1]
+    src_np = src.numpy()
+    dst_np = dst.numpy()
+
+    # 1-hop neighbors: center_node attends over these
+    hop1_nodes = set(
+        int(dst_np[i]) for i in range(len(src_np))
+        if int(src_np[i]) == center_node and int(dst_np[i]) != center_node
+    )
+
+    # 2-hop neighbors
+    hop2_nodes = set()
+    for nbr in hop1_nodes:
+        for i in range(len(src_np)):
+            if int(src_np[i]) == nbr and int(dst_np[i]) != nbr:
+                hop2_nodes.add(int(dst_np[i]))
+    hop2_nodes -= hop1_nodes
+    hop2_nodes.discard(center_node)
+
+    all_nodes = {center_node} | hop1_nodes | hop2_nodes
+
+    if len(all_nodes) > 80:
+        print(
+            f"Warning: 2-hop subgraph around node {center_node} has {len(all_nodes)} nodes "
+            f"(> 80); capping to center + 1-hop only."
+        )
+        hop2_nodes = set()
+        all_nodes = {center_node} | hop1_nodes
+
+    subgraph_nodes = sorted(all_nodes)
+
+    subgraph_edges = []
+    for i in range(len(src_np)):
+        u, v = int(src_np[i]), int(dst_np[i])
+        if u in all_nodes and v in all_nodes and u != v:
+            mean_alpha = float(alpha1[i].mean())
+            subgraph_edges.append((u, v, mean_alpha))
+
+    hop_label = {center_node: 0}
+    for n in hop1_nodes:
+        hop_label[n] = 1
+    for n in hop2_nodes:
+        hop_label[n] = 2
+    for n in subgraph_nodes:
+        if n not in hop_label:
+            hop_label[n] = 2
+
+    return subgraph_nodes, subgraph_edges, hop_label
+
+
+# ---------------------------------------------------------------------------
+# Figure 4: 2-hop directed subgraph
+# ---------------------------------------------------------------------------
+
+def fig_directed_subgraph(center_node, ei, alpha1, labels, out_path):
+    subgraph_nodes, subgraph_edges, hop_label = build_2hop_subgraph(center_node, ei, alpha1)
+
+    try:
+        import networkx as nx
+    except ImportError:
+        print("networkx required for fig4: pip install networkx")
+        return
+
+    G = nx.DiGraph()
+    G.add_nodes_from(subgraph_nodes)
+    for u, v, _ in subgraph_edges:
+        G.add_edge(u, v)
+
+    pos = nx.spring_layout(G, seed=42)
+
+    fig, ax = plt.subplots(figsize=(14, 12))
+
+    center_nodes = [n for n in subgraph_nodes if hop_label[n] == 0]
+    hop1_list = [n for n in subgraph_nodes if hop_label[n] == 1]
+    hop2_list = [n for n in subgraph_nodes if hop_label[n] == 2]
+
+    if hop2_list:
+        ax.scatter(
+            [pos[n][0] for n in hop2_list],
+            [pos[n][1] for n in hop2_list],
+            c=[PALETTE[int(labels[n])] for n in hop2_list],
+            s=80, zorder=3,
+        )
+    if hop1_list:
+        ax.scatter(
+            [pos[n][0] for n in hop1_list],
+            [pos[n][1] for n in hop1_list],
+            c=[PALETTE[int(labels[n])] for n in hop1_list],
+            s=180, edgecolors="gray", linewidths=1, zorder=4,
+        )
+    if center_nodes:
+        ax.scatter(
+            [pos[n][0] for n in center_nodes],
+            [pos[n][1] for n in center_nodes],
+            c=[PALETTE[int(labels[n])] for n in center_nodes],
+            s=400, edgecolors="black", linewidths=2, zorder=5,
+        )
+
+    max_alpha = max((w for _, _, w in subgraph_edges), default=1.0)
+    if max_alpha == 0:
+        max_alpha = 1.0
+
+    cmap = plt.cm.RdYlBu
+    norm = plt.Normalize(vmin=0, vmax=max_alpha)
+
+    for u, v, mean_alpha in subgraph_edges:
+        if u == v:
+            continue
+        lw = 0.3 + (mean_alpha / max_alpha) * 2.7
+        color = cmap(norm(mean_alpha))
+        opacity = max(0.2, mean_alpha / max_alpha)
+        ax.annotate(
+            "",
+            xy=pos[v], xytext=pos[u],
+            arrowprops=dict(
+                arrowstyle="->",
+                mutation_scale=12,
+                color=color,
+                lw=lw,
+                alpha=opacity,
+            ),
+            zorder=2,
+        )
+
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    plt.colorbar(sm, ax=ax, label="Mean attention weight α", shrink=0.6)
+
+    legend_handles = [
+        ax.scatter([], [], s=400, c=[[0.5, 0.5, 0.5, 1.0]],
+                   edgecolors="black", linewidths=2, label="Center node"),
+        ax.scatter([], [], s=180, c=[[0.5, 0.5, 0.5, 1.0]],
+                   edgecolors="gray", linewidths=1, label="1-hop neighbor"),
+        ax.scatter([], [], s=80, c=[[0.5, 0.5, 0.5, 1.0]], label="2-hop neighbor"),
+    ]
+    for i in range(7):
+        legend_handles.append(mpatches.Patch(color=PALETTE[i], label=CORA_CLASSES[i]))
+    ax.legend(handles=legend_handles, loc="upper left", fontsize=8, frameon=True)
+
+    ax.set_title(
+        f"2-Hop Directed Attention Subgraph — Node {center_node} "
+        f"[{CORA_CLASSES[int(labels[center_node])]}]\n"
+        "Arrow width & color ∝ mean α (layer 1, averaged over 8 heads)  |  "
+        "arrows show direction of attention",
+        fontsize=11,
+    )
+    ax.axis("off")
+
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved: {out_path}")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -454,6 +613,9 @@ def main():
                         help="Epochs for quick training when no checkpoint is given")
     parser.add_argument("--head-node", type=int, default=None,
                         help="Node index to use for the per-head figure (auto-selected if omitted)")
+    parser.add_argument("--subgraph-node", type=int, default=None,
+                        help="Center node for the 2-hop directed subgraph figure (Fig 4). "
+                             "Defaults to the same node used for Fig 2 (per-head figure).")
     args = parser.parse_args()
 
     # Output directory
@@ -524,6 +686,18 @@ def main():
     fig_stats(
         ei, alpha1, labels,
         out_path=os.path.join(args.output_dir, "fig3_stats.png"),
+    )
+
+    # Figure 4: 2-hop directed subgraph
+    if args.subgraph_node is not None:
+        subgraph_node = args.subgraph_node
+    else:
+        subgraph_node = head_node
+    print(f"Fig 4: 2-hop subgraph centered on Node {subgraph_node} "
+          f"[{CORA_CLASSES[int(labels[subgraph_node])]}]")
+    fig_directed_subgraph(
+        subgraph_node, ei, alpha1, labels,
+        out_path=os.path.join(args.output_dir, "fig4_directed_subgraph.png"),
     )
 
     print(f"\nAll figures written to: {os.path.abspath(args.output_dir)}/")
