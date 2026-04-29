@@ -199,7 +199,9 @@ def find_mixed_label_node(dadel, model, ei, alpha1, labels,
 # Single ego-graph drawing utility
 # ---------------------------------------------------------------------------
 
-def _draw_ego(ax, node, ei, alpha, labels, head=None, show_title=True, uniform_line=True):
+def _draw_ego(ax, node, ei, alpha, labels, pred_labels=None,
+              head=None, show_title=True, uniform_line=True,
+              show_legend_note=False):
     """
     Draw the 1-hop ego-graph of `node` on `ax`.
 
@@ -230,8 +232,8 @@ def _draw_ego(ax, node, ei, alpha, labels, head=None, show_title=True, uniform_l
     w_max = ws.max() if ws.max() > 0 else 1.0
     w_norm = ws / w_max  # normalize so the strongest edge has width 1
 
-    # Edges
-    for nbr, wn in zip(nbrs, w_norm):
+    # Edges + attention weight text labels
+    for idx, (nbr, wn) in enumerate(zip(nbrs, w_norm)):
         p0, p1 = pos[node], pos[int(nbr)]
         is_self = int(nbr) == node
         ax.plot(
@@ -242,6 +244,14 @@ def _draw_ego(ax, node, ei, alpha, labels, head=None, show_title=True, uniform_l
             zorder=1,
             solid_capstyle="round",
         )
+        if not is_self:
+            mid_x = (p0[0] + p1[0]) / 2
+            mid_y = (p0[1] + p1[1]) / 2
+            ax.text(mid_x, mid_y, f"{ws[idx]:.3f}",
+                    fontsize=5, ha="center", va="center",
+                    color="white",
+                    bbox=dict(boxstyle="round,pad=0.1", fc="#333333", ec="none", alpha=0.7),
+                    zorder=5)
 
     # Uniform-attention reference (dashed circle border annotation)
     if uniform_line and n_nbrs > 0:
@@ -252,18 +262,29 @@ def _draw_ego(ax, node, ei, alpha, labels, head=None, show_title=True, uniform_l
             fontsize=5.5, color="#888888", va="bottom",
         )
 
-    # Nodes
+    # Nodes — double-circle: outer=predicted label, inner=true label
     all_nodes = [node] + [int(nb) for nb in nbrs if int(nb) != node]
     for nd in all_nodes:
-        c = PALETTE[int(labels[nd])]
+        true_cls = int(labels[nd])
+        pred_cls = int(pred_labels[nd]) if pred_labels is not None else true_cls
         is_center = nd == node
-        ax.scatter(
-            pos[nd][0], pos[nd][1],
-            c=[c], s=160 if is_center else 70,
-            zorder=3,
-            linewidths=2.0 if is_center else 0.5,
-            edgecolors="black" if is_center else "#666666",
-        )
+        outer_size = 280 if is_center else 130
+        inner_size = 160 if is_center else 70
+
+        ax.scatter(pos[nd][0], pos[nd][1],
+                   c=[PALETTE[pred_cls]],
+                   s=outer_size, zorder=3, linewidths=0)
+
+        ax.scatter(pos[nd][0], pos[nd][1],
+                   c=[PALETTE[true_cls]],
+                   s=inner_size, zorder=4,
+                   linewidths=2 if is_center else 0.8,
+                   edgecolors="black")
+
+    if pred_labels is not None and show_legend_note:
+        ax.text(0.5, -0.01, "inner=true  outer=predicted  (match=correct)",
+                ha="center", va="top", fontsize=5, color="#666666",
+                transform=ax.transAxes)
 
     cls_name = CORA_CLASSES[int(labels[node])]
     if show_title:
@@ -278,16 +299,17 @@ def _draw_ego(ax, node, ei, alpha, labels, head=None, show_title=True, uniform_l
 # Figure 1: Ego-graph grid
 # ---------------------------------------------------------------------------
 
-def fig_ego_grid(nodes, ei, alpha1, labels, out_path):
+def fig_ego_grid(nodes, ei, alpha1, labels, pred_labels, out_path):
     n = len(nodes)
-    ncols = 3
-    nrows = (n + ncols - 1) // ncols
+    ncols = 4
+    nrows = 2
 
     fig, axes = plt.subplots(nrows, ncols, figsize=(14, 5 * nrows))
     axes = np.array(axes).flatten()
 
-    for ax, node in zip(axes, nodes):
-        _draw_ego(ax, node, ei, alpha1, labels)
+    for i, (ax, node) in enumerate(zip(axes, nodes)):
+        _draw_ego(ax, node, ei, alpha1, labels, pred_labels=pred_labels,
+                  show_legend_note=(i == 0))
 
     for ax in axes[n:]:
         ax.axis("off")
@@ -324,7 +346,7 @@ def fig_ego_grid(nodes, ei, alpha1, labels, out_path):
 # Figure 2: Per-head breakdown for one node
 # ---------------------------------------------------------------------------
 
-def fig_heads(node, ei, alpha1, labels, out_path):
+def fig_heads(node, ei, alpha1, labels, pred_labels, out_path):
     num_heads = alpha1.shape[1]
     ncols = 4
     nrows = 2
@@ -333,8 +355,9 @@ def fig_heads(node, ei, alpha1, labels, out_path):
     axes = axes.flatten()
 
     for h in range(num_heads):
-        _draw_ego(axes[h], node, ei, alpha1, labels, head=h,
-                  show_title=False, uniform_line=False)
+        _draw_ego(axes[h], node, ei, alpha1, labels, pred_labels=pred_labels,
+                  head=h, show_title=False, uniform_line=False,
+                  show_legend_note=(h == 0))
         axes[h].set_title(f"Head {h+1}", fontsize=9, pad=3)
 
     cls_name = CORA_CLASSES[int(labels[node])]
@@ -498,7 +521,7 @@ def build_2hop_subgraph(center_node, ei, alpha1):
 # Figure 4: 2-hop directed subgraph
 # ---------------------------------------------------------------------------
 
-def fig_directed_subgraph(center_node, ei, alpha1, labels, out_path):
+def fig_directed_subgraph(center_node, ei, alpha1, labels, pred_labels, out_path):
     subgraph_nodes, subgraph_edges, hop_label = build_2hop_subgraph(center_node, ei, alpha1)
 
     try:
@@ -516,31 +539,23 @@ def fig_directed_subgraph(center_node, ei, alpha1, labels, out_path):
 
     fig, ax = plt.subplots(figsize=(14, 12))
 
-    center_nodes = [n for n in subgraph_nodes if hop_label[n] == 0]
-    hop1_list = [n for n in subgraph_nodes if hop_label[n] == 1]
-    hop2_list = [n for n in subgraph_nodes if hop_label[n] == 2]
+    # Double-circle nodes: outer=predicted label, inner=true label
+    outer_sizes = {0: 500, 1: 250, 2: 100}
+    inner_sizes = {0: 300, 1: 140, 2: 55}
+    edge_lws = {0: 2.5, 1: 1.5, 2: 0.5}
 
-    if hop2_list:
-        ax.scatter(
-            [pos[n][0] for n in hop2_list],
-            [pos[n][1] for n in hop2_list],
-            c=[PALETTE[int(labels[n])] for n in hop2_list],
-            s=80, zorder=3,
-        )
-    if hop1_list:
-        ax.scatter(
-            [pos[n][0] for n in hop1_list],
-            [pos[n][1] for n in hop1_list],
-            c=[PALETTE[int(labels[n])] for n in hop1_list],
-            s=180, edgecolors="gray", linewidths=1, zorder=4,
-        )
-    if center_nodes:
-        ax.scatter(
-            [pos[n][0] for n in center_nodes],
-            [pos[n][1] for n in center_nodes],
-            c=[PALETTE[int(labels[n])] for n in center_nodes],
-            s=400, edgecolors="black", linewidths=2, zorder=5,
-        )
+    for nd in subgraph_nodes:
+        true_cls = int(labels[nd])
+        pred_cls = int(pred_labels[nd])
+        hop = hop_label[nd]
+
+        ax.scatter(pos[nd][0], pos[nd][1],
+                   c=[PALETTE[pred_cls]], s=outer_sizes[hop],
+                   zorder=3, linewidths=0)
+        ax.scatter(pos[nd][0], pos[nd][1],
+                   c=[PALETTE[true_cls]], s=inner_sizes[hop],
+                   zorder=4, linewidths=edge_lws[hop],
+                   edgecolors="black")
 
     max_alpha = max((w for _, _, w in subgraph_edges), default=1.0)
     if max_alpha == 0:
@@ -549,35 +564,60 @@ def fig_directed_subgraph(center_node, ei, alpha1, labels, out_path):
     cmap = plt.cm.RdYlBu
     norm = plt.Normalize(vmin=0, vmax=max_alpha)
 
+    edge_set = {(u, v) for u, v, _ in subgraph_edges if u != v}
+
     for u, v, mean_alpha in subgraph_edges:
         if u == v:
             continue
         lw = 0.3 + (mean_alpha / max_alpha) * 2.7
-        color = cmap(norm(mean_alpha))
+        edge_color = cmap(norm(mean_alpha))
         opacity = max(0.2, mean_alpha / max_alpha)
+        has_reverse = (v, u) in edge_set
+        rad = 0.25 if has_reverse else 0.1
         ax.annotate(
             "",
             xy=pos[v], xytext=pos[u],
             arrowprops=dict(
-                arrowstyle="->",
-                mutation_scale=12,
-                color=color,
+                arrowstyle="->, head_width=0.3, head_length=0.3",
+                connectionstyle=f"arc3,rad={rad}",
+                color=edge_color,
                 lw=lw,
                 alpha=opacity,
+                shrinkA=12,
+                shrinkB=12,
             ),
             zorder=2,
         )
+
+        mid_x = (pos[u][0] + pos[v][0]) / 2
+        mid_y = (pos[u][1] + pos[v][1]) / 2
+        dx = pos[v][0] - pos[u][0]
+        dy = pos[v][1] - pos[u][1]
+        length = max((dx**2 + dy**2)**0.5, 1e-6)
+        perp_x = -dy / length
+        perp_y = dx / length
+        offset = 0.04
+        label_x = mid_x + perp_x * offset
+        label_y = mid_y + perp_y * offset
+        ax.text(label_x, label_y, f"{mean_alpha:.3f}",
+                fontsize=6, ha="center", va="center",
+                color="white",
+                bbox=dict(boxstyle="round,pad=0.1", fc="#222222", ec="none", alpha=0.75),
+                zorder=6)
 
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
     plt.colorbar(sm, ax=ax, label="Mean attention weight α", shrink=0.6)
 
     legend_handles = [
-        ax.scatter([], [], s=400, c=[[0.5, 0.5, 0.5, 1.0]],
-                   edgecolors="black", linewidths=2, label="Center node"),
-        ax.scatter([], [], s=180, c=[[0.5, 0.5, 0.5, 1.0]],
-                   edgecolors="gray", linewidths=1, label="1-hop neighbor"),
-        ax.scatter([], [], s=80, c=[[0.5, 0.5, 0.5, 1.0]], label="2-hop neighbor"),
+        ax.scatter([], [], s=500, c=[[0.5, 0.5, 0.5, 1.0]],
+                   linewidths=0, label="Center node"),
+        ax.scatter([], [], s=250, c=[[0.5, 0.5, 0.5, 1.0]],
+                   linewidths=0, label="1-hop neighbor"),
+        ax.scatter([], [], s=100, c=[[0.5, 0.5, 0.5, 1.0]],
+                   linewidths=0, label="2-hop neighbor"),
+        mpatches.Patch(color="none", label="inner fill = true label"),
+        mpatches.Patch(color="none", label="outer ring = predicted label"),
     ]
     for i in range(7):
         legend_handles.append(mpatches.Patch(color=PALETTE[i], label=CORA_CLASSES[i]))
@@ -648,8 +688,14 @@ def main():
     print("Extracting attention weights...")
     ei, alpha1, alpha2 = extract_attention(model, data)
 
+    # Compute predictions
+    model.eval()
+    with torch.no_grad():
+        logits, _, _ = model(data.x, data.edge_index, return_attn=True)
+    pred = logits.argmax(dim=1).cpu()
+
     # Pick nodes for ego-graph grid
-    nodes = pick_nodes(data, model, ei, alpha1, n=6)
+    nodes = pick_nodes(data, model, ei, alpha1, n=7)
     print(f"Selected nodes: {nodes}")
     print(f"  classes: {[CORA_CLASSES[int(labels[n])] for n in nodes]}")
 
@@ -665,7 +711,7 @@ def main():
 
     # Figure 1: Ego-graph grid
     fig_ego_grid(
-        nodes, ei, alpha1, labels,
+        nodes, ei, alpha1, labels, pred,
         out_path=os.path.join(args.output_dir, "fig1_ego_graphs.png"),
     )
 
@@ -678,7 +724,7 @@ def main():
     else:
         head_node = nodes[0]
     fig_heads(
-        head_node, ei, alpha1, labels,
+        head_node, ei, alpha1, labels, pred,
         out_path=os.path.join(args.output_dir, "fig2_heads.png"),
     )
 
@@ -696,7 +742,7 @@ def main():
     print(f"Fig 4: 2-hop subgraph centered on Node {subgraph_node} "
           f"[{CORA_CLASSES[int(labels[subgraph_node])]}]")
     fig_directed_subgraph(
-        subgraph_node, ei, alpha1, labels,
+        subgraph_node, ei, alpha1, labels, pred,
         out_path=os.path.join(args.output_dir, "fig4_directed_subgraph.png"),
     )
 
