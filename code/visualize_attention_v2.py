@@ -237,8 +237,10 @@ def _draw_ego(ax, node, ei, alpha, labels, pred_labels=None,
         p0, p1 = pos[node], pos[int(nbr)]
         is_self = int(nbr) == node
         if is_self:
+            arc_cx = pos[node][0] + 0.18
+            arc_cy = pos[node][1] - 0.18
             loop = mpatches.Arc(
-                (0.18, -0.18),
+                (arc_cx, arc_cy),
                 width=0.32,
                 height=0.32,
                 angle=0,
@@ -250,7 +252,7 @@ def _draw_ego(ax, node, ei, alpha, labels, pred_labels=None,
                 zorder=1,
             )
             ax.add_patch(loop)
-            ax.text(0.38, -0.28, f"{ws[idx]:.3f}",
+            ax.text(pos[node][0] + 0.38, pos[node][1] - 0.28, f"{ws[idx]:.3f}",
                     fontsize=5, ha="center", va="center",
                     color="white",
                     bbox=dict(boxstyle="round,pad=0.1", fc="#aa2222",
