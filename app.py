@@ -306,8 +306,8 @@ with tab2:
             cls_idx   = int(labels_np[nd])
             base_rgba = PALETTE[cls_idx]
             base_hex  = rgba_to_hex(base_rgba)
-            x_pos = float(st.session_state.node_positions[nd][0]) * 3000
-            y_pos = float(st.session_state.node_positions[nd][1]) * 3000
+            x_pos = float(st.session_state.node_positions[nd][0]) * 2000
+            y_pos = float(st.session_state.node_positions[nd][1]) * 2000
 
             if mode == "Class Filter":
                 if CORA_CLASSES[cls_idx] in selected_classes:
@@ -453,15 +453,15 @@ with tab2:
             dst_np_layout = st.session_state.ei[1].numpy()
             for u, v in zip(src_np_layout, dst_np_layout):
                 G_layout.add_edge(int(u), int(v))
-            pos = nx.spring_layout(G_layout, seed=42, k=2.5)
+            pos = nx.spring_layout(G_layout, seed=42, k=0.3, iterations=50)
             st.session_state.node_positions = pos
 
     # Cache rendered HTML per mode/selection to avoid re-generating on every
     # interaction (2708-node graphs are slow to build from scratch each time).
     if mode == "Class Filter":
-        cache_key = "v5_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
+        cache_key = "v6_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
     else:
-        cache_key = f"v5_pyvis_html_{mode}"
+        cache_key = f"v6_pyvis_html_{mode}"
 
     if cache_key not in st.session_state:
         st.session_state[cache_key] = build_pyvis_graph(mode, selected_classes, st.session_state)
