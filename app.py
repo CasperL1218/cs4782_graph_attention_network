@@ -64,43 +64,110 @@ if "model" not in st.session_state:
         "num_nodes": data.num_nodes,
     })
 
+def annotate_ego(ax, node, ei, alpha, labels, head=None):
+    """
+    Add neighbor index labels to an ego-graph axis drawn by _draw_ego().
+    Recomputes the same circular layout _draw_ego uses so positions match.
+    Edge attention scores are already rendered by _draw_ego; this adds only
+    the neighbor index labels outside each node dot.
+    """
+    src_np = ei[0].numpy()
+    dst_np = ei[1].numpy()
+    a = alpha.numpy()
+    w = a.mean(axis=1) if head is None else a[:, head]
+
+    mask = src_np == node
+    nbrs = dst_np[mask]
+    ws = w[mask]
+
+    if len(nbrs) == 0:
+        return
+
+    n_nbrs = len(nbrs)
+    angles = np.linspace(0, 2 * np.pi, n_nbrs, endpoint=False)
+    pos = {}
+    for i, nbr in enumerate(nbrs):
+        pos[int(nbr)] = np.array([np.cos(angles[i]), np.sin(angles[i])])
+
+    # Neighbor index labels (outside the node dot)
+    for nbr in nbrs:
+        nbr = int(nbr)
+        if nbr == node:
+            continue
+        p = pos[nbr]
+        offset = p * 0.22  # push label slightly outward from dot
+        ax.text(
+            p[0] + offset[0], p[1] + offset[1],
+            str(nbr),
+            fontsize=6,
+            ha="center", va="center",
+            color="white",
+            bbox=dict(boxstyle="round,pad=0.1", fc="#111111", ec="none", alpha=0.6),
+            zorder=6,
+        )
+
+
 tab1, tab2 = st.tabs(["🔍 Node Explorer", "🌐 Graph View"])
 
 # =========================================================================
 # Tab 1 — Node Explorer
 # =========================================================================
 with tab1:
+    if "selected_node" not in st.session_state:
+        st.session_state.selected_node = 0
+
     st.sidebar.header("Node Explorer")
 
-    node_input = st.sidebar.number_input(
-        "Node index", min_value=0,
-        max_value=st.session_state.num_nodes - 1,
-        value=0, step=1
+    src_np_tab1 = st.session_state.ei[0].numpy()
+    all_degrees = np.array([int((src_np_tab1 == nd).sum()) for nd in range(st.session_state.num_nodes)])
+    max_deg = int(all_degrees.max())
+
+    # Slider renders before buttons so its value is available to button handlers
+    deg_min, deg_max = st.sidebar.slider(
+        "Neighbor degree filter (for random buttons)",
+        min_value=1, max_value=max_deg,
+        value=(1, max_deg), step=1
     )
 
     if st.sidebar.button("🎲 Random Node"):
-        node_input = int(np.random.randint(0, st.session_state.num_nodes))
+        candidates = np.where((all_degrees >= deg_min) & (all_degrees <= deg_max))[0]
+        st.session_state.selected_node = int(np.random.choice(candidates))
 
     if st.sidebar.button("❌ Random Misclassified"):
         s = st.session_state
         wrong = (s.pred != s.labels).nonzero(as_tuple=True)[0].numpy()
-        node_input = int(np.random.choice(wrong))
+        deg_candidates = np.where((all_degrees >= deg_min) & (all_degrees <= deg_max))[0]
+        filtered_wrong = np.intersect1d(wrong, deg_candidates)
+        pool = filtered_wrong if len(filtered_wrong) > 0 else wrong
+        st.session_state.selected_node = int(np.random.choice(pool))
 
     if st.sidebar.button("🔀 Random Mixed-Label"):
         s = st.session_state
         best_node, entropy, counts = find_mixed_label_node(
             s.data, s.model, s.ei, s.alpha1, s.labels
         )
-        if best_node is not None:
-            node_input = best_node
+        if best_node is not None and deg_min <= all_degrees[best_node] <= deg_max:
+            st.session_state.selected_node = best_node
+
+    node_input = st.sidebar.number_input(
+        "Node index", min_value=0,
+        max_value=st.session_state.num_nodes - 1,
+        value=st.session_state.selected_node, step=1,
+        key="node_input_widget"
+    )
+    st.session_state.selected_node = int(node_input)
+
+    node = st.session_state.selected_node
 
     col1, col2 = st.columns([1, 1])
 
     with col1:
         st.subheader("Ego-Graph (mean α across 8 heads)")
         fig, ax = plt.subplots(figsize=(5, 5))
-        _draw_ego(ax, node_input, st.session_state.ei,
-                  st.session_state.alpha1, st.session_state.labels)
+        _draw_ego(ax, node, st.session_state.ei, st.session_state.alpha1,
+                  st.session_state.labels)
+        annotate_ego(ax, node, st.session_state.ei, st.session_state.alpha1,
+                     st.session_state.labels)
         st.pyplot(fig)
         plt.close(fig)
 
@@ -108,17 +175,19 @@ with tab1:
         st.subheader("Per-Head Attention Breakdown")
         fig, axes = plt.subplots(2, 4, figsize=(10, 5))
         for h, ax in enumerate(axes.flatten()):
-            _draw_ego(ax, node_input, st.session_state.ei,
+            _draw_ego(ax, node, st.session_state.ei,
                       st.session_state.alpha1, st.session_state.labels,
                       head=h, show_title=False, uniform_line=False)
             ax.set_title(f"Head {h+1}", fontsize=8)
+            annotate_ego(ax, node, st.session_state.ei,
+                         st.session_state.alpha1, st.session_state.labels,
+                         head=h)
         plt.tight_layout()
         st.pyplot(fig)
         plt.close(fig)
 
     # --- Info table ---
     s = st.session_state
-    node = node_input
     true_label = CORA_CLASSES[int(s.labels[node])]
     pred_label = CORA_CLASSES[int(s.pred[node])]
     conf       = float(s.confidence[node])
@@ -132,6 +201,8 @@ with tab1:
 | Predicted label | {pred_label} {correct} |
 | Confidence | {conf:.1%} |
 """)
+
+    st.metric("Node degree (incl. self-loop)", int(all_degrees[node]))
 
     # Top neighbors by mean attention weight across heads
     src_np         = s.ei[0].numpy()
@@ -202,7 +273,7 @@ with tab2:
         net = Network(height="700px", width="100%", bgcolor="#1a1a2e",
                       font_color="white")
         net.barnes_hut(spring_length=80, spring_strength=0.01,
-                       damping=0.09, overlap=0)
+                       damping=0.4, overlap=0)
 
         src_np     = s.ei[0].numpy()
         dst_np     = s.ei[1].numpy()
@@ -219,23 +290,24 @@ with tab2:
 
             if mode == "Class Filter":
                 if CORA_CLASSES[cls_idx] in selected_classes:
-                    color, size, opacity = base_hex, 12, 1.0
+                    color, size, opacity = base_hex, 22, 1.0
                 else:
-                    color, size, opacity = "#444444", 4, 0.3
+                    color, size, opacity = "#444444", 5, 0.3
 
             elif mode == "Confidence Overlay":
                 c = float(conf_np[nd])
-                r = int((1 - c) * 0x88 + c * base_rgba[0] * 255)
-                g = int((1 - c) * 0x88 + c * base_rgba[1] * 255)
-                b = int((1 - c) * 0x88 + c * base_rgba[2] * 255)
-                color, size, opacity = f"#{r:02x}{g:02x}{b:02x}", 8, 0.9
+                c_boosted = c ** 0.5
+                r = int((1 - c_boosted) * 0x88 + c_boosted * base_rgba[0] * 255)
+                g = int((1 - c_boosted) * 0x88 + c_boosted * base_rgba[1] * 255)
+                b = int((1 - c_boosted) * 0x88 + c_boosted * base_rgba[2] * 255)
+                color, size, opacity = f"#{r:02x}{g:02x}{b:02x}", 12, 0.95
 
             elif mode == "Attention Concentration":
-                conc = 1.0 - float(entropy_np[nd])
+                conc = (1.0 - float(entropy_np[nd])) ** 0.5
                 r = int((1 - conc) * 0xaa + conc * base_rgba[0] * 255)
                 g = int((1 - conc) * 0xaa + conc * base_rgba[1] * 255)
                 b = int((1 - conc) * 0xaa + conc * base_rgba[2] * 255)
-                color, size, opacity = f"#{r:02x}{g:02x}{b:02x}", 8, 0.9
+                color, size, opacity = f"#{r:02x}{g:02x}{b:02x}", 12, 0.9
 
             title = (f"Node {nd}<br>"
                      f"True: {CORA_CLASSES[cls_idx]}<br>"
@@ -245,8 +317,6 @@ with tab2:
                          title=title, opacity=opacity)
 
         max_alpha = float(alpha_np.max()) if alpha_np.max() > 0 else 1.0
-        # Compute threshold once outside the edge loop (gotcha #8)
-        threshold = np.percentile(alpha_np, 90)
 
         for k in range(len(src_np)):
             u, v = int(src_np[k]), int(dst_np[k])
@@ -259,26 +329,37 @@ with tab2:
                     continue
                 width = 0.5 + (w / max_alpha) * 4.0
                 net.add_edge(u, v, width=width, color="#ffffff",
-                             arrows="to", smooth={"type": "curvedCW"})
+                             arrows="to", smooth={"type": "dynamic"})
             else:
-                if w < threshold:
-                    continue
-                width = 0.3 + (w / max_alpha) * 3.0
-                net.add_edge(u, v, width=width, color="#ffffff44",
-                             arrows="to", smooth={"type": "curvedCW"})
+                pass  # Modes 2 and 3: color is the signal, no edges drawn
 
-        return net
+        html = net.generate_html()
+        freeze_js = """
+<script type="text/javascript">
+  document.addEventListener("DOMContentLoaded", function() {
+    var checkNetwork = setInterval(function() {
+      if (window.network) {
+        clearInterval(checkNetwork);
+        network.once("stabilized", function() {
+          network.setOptions({ physics: { enabled: false } });
+        });
+      }
+    }, 100);
+  });
+</script>
+"""
+        html = html.replace("</body>", freeze_js + "</body>")
+        return html
 
     # Cache rendered HTML per mode/selection to avoid re-generating on every
     # interaction (2708-node graphs are slow to build from scratch each time).
     if mode == "Class Filter":
-        cache_key = "pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
+        cache_key = "v2_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
     else:
-        cache_key = f"pyvis_html_{mode}"
+        cache_key = f"v2_pyvis_html_{mode}"
 
     if cache_key not in st.session_state:
-        net = build_pyvis_graph(mode, selected_classes, st.session_state)
-        st.session_state[cache_key] = net.generate_html()
+        st.session_state[cache_key] = build_pyvis_graph(mode, selected_classes, st.session_state)
 
     components.html(st.session_state[cache_key], height=720, scrolling=False)
 
