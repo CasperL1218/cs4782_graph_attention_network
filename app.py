@@ -10,6 +10,7 @@ sys.path.insert(0, "code")
 import streamlit as st
 import torch
 import numpy as np
+import networkx as nx
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -240,7 +241,9 @@ with tab2:
 
     mode = st.sidebar.radio(
         "Visualization mode",
-        ["Class Filter", "Confidence Overlay", "Attention Concentration"]
+        ["Class Filter", "Confidence Overlay", "Attention Concentration",
+         "In-Degree (Citations Received)", "Out-Degree (Papers Cited)",
+         "Misclassification Heatmap"]
     )
 
     selected_classes = []
@@ -249,8 +252,20 @@ with tab2:
             "Show classes", CORA_CLASSES, default=["Theory"]
         )
 
-    # Precompute attention entropy per node (cached after first render)
+    # Precompute attention entropy and degree arrays per node (cached after first render)
     s = st.session_state
+    if "in_degree" not in st.session_state:
+        src_np_t2 = st.session_state.ei[0].numpy()
+        dst_np_t2 = st.session_state.ei[1].numpy()
+        in_deg  = np.zeros(st.session_state.num_nodes, dtype=np.int32)
+        out_deg = np.zeros(st.session_state.num_nodes, dtype=np.int32)
+        for v in dst_np_t2:
+            in_deg[int(v)] += 1
+        for u in src_np_t2:
+            out_deg[int(u)] += 1
+        st.session_state.in_degree  = in_deg
+        st.session_state.out_degree = out_deg
+
     if "node_entropy" not in st.session_state:
         src_np    = s.ei[0].numpy()
         alpha_np  = s.alpha1.numpy()        # [E, 8]
@@ -272,8 +287,7 @@ with tab2:
     def build_pyvis_graph(mode, selected_classes, s):
         net = Network(height="700px", width="100%", bgcolor="#1a1a2e",
                       font_color="white")
-        net.barnes_hut(spring_length=80, spring_strength=0.01,
-                       damping=0.4, overlap=0)
+        net.toggle_physics(False)
 
         src_np     = s.ei[0].numpy()
         dst_np     = s.ei[1].numpy()
@@ -282,11 +296,18 @@ with tab2:
         pred_np    = s.pred.numpy()
         conf_np    = s.confidence.numpy()
         entropy_np = s.node_entropy                  # [N] normalized 0-1
+        in_deg_np  = s.in_degree
+        out_deg_np = s.out_degree
+
+        p95_in  = float(np.percentile(in_deg_np, 95))
+        p95_out = float(np.percentile(out_deg_np, 95))
 
         for nd in range(s.num_nodes):
             cls_idx   = int(labels_np[nd])
             base_rgba = PALETTE[cls_idx]
             base_hex  = rgba_to_hex(base_rgba)
+            x_pos = float(st.session_state.node_positions[nd][0]) * 3000
+            y_pos = float(st.session_state.node_positions[nd][1]) * 3000
 
             if mode == "Class Filter":
                 if CORA_CLASSES[cls_idx] in selected_classes:
@@ -298,36 +319,112 @@ with tab2:
                          f"Pred: {CORA_CLASSES[int(pred_np[nd])]}<br>"
                          f"Conf: {conf_np[nd]:.1%}"
                          f"<br>Color: {color}")
+                net.add_node(nd, label="", color=color, size=size,
+                             title=title, opacity=opacity,
+                             x=x_pos, y=y_pos, physics=False)
 
             elif mode == "Confidence Overlay":
                 c = float(conf_np[nd])
-                c_boosted = c ** 0.5
-                r = int((1 - c_boosted) * 0x88 + c_boosted * base_rgba[0] * 255)
-                g = int((1 - c_boosted) * 0x88 + c_boosted * base_rgba[1] * 255)
-                b = int((1 - c_boosted) * 0x88 + c_boosted * base_rgba[2] * 255)
-                color, size, opacity = f"#{r:02x}{g:02x}{b:02x}", 20, 0.95
-                title = (f"Node {nd}<br>"
-                         f"True: {CORA_CLASSES[cls_idx]}<br>"
-                         f"Pred: {CORA_CLASSES[int(pred_np[nd])]}<br>"
-                         f"Conf: {conf_np[nd]:.1%}<br>"
-                         f"Conf (boosted): {float(conf_np[nd])**0.5:.3f}<br>"
-                         f"Color: {color}")
+                is_correct = int(pred_np[nd]) == cls_idx
+                node_size = int(8 + c * 35)
+                border_color = base_hex if is_correct else "#ffffff"
+                border_width = 1 if is_correct else 3
+                net.add_node(nd,
+                    label="",
+                    color={"background": base_hex,
+                           "border": border_color,
+                           "highlight": {"background": base_hex, "border": "#ffff00"}},
+                    size=node_size,
+                    borderWidth=border_width,
+                    opacity=0.9,
+                    title=(f"Node {nd}<br>"
+                           f"True: {CORA_CLASSES[cls_idx]}<br>"
+                           f"Pred: {CORA_CLASSES[int(pred_np[nd])]}<br>"
+                           f"Conf: {c:.1%}<br>"
+                           f"Size: {node_size}<br>"
+                           f"{'✅ Correct' if is_correct else '❌ Wrong'}"),
+                    x=x_pos, y=y_pos, physics=False)
 
             elif mode == "Attention Concentration":
-                conc = (1.0 - float(entropy_np[nd])) ** 0.5
-                r = int((1 - conc) * 0xaa + conc * base_rgba[0] * 255)
-                g = int((1 - conc) * 0xaa + conc * base_rgba[1] * 255)
-                b = int((1 - conc) * 0xaa + conc * base_rgba[2] * 255)
-                color, size, opacity = f"#{r:02x}{g:02x}{b:02x}", 20, 0.9
-                title = (f"Node {nd}<br>"
-                         f"True: {CORA_CLASSES[cls_idx]}<br>"
-                         f"Pred: {CORA_CLASSES[int(pred_np[nd])]}<br>"
-                         f"Raw entropy (norm): {float(entropy_np[nd]):.3f}<br>"
-                         f"Conc (boosted): {(1-float(entropy_np[nd]))**0.5:.3f}<br>"
-                         f"Color: {color}")
+                conc = 1.0 - float(entropy_np[nd])
+                node_size = int(8 + conc * 35)
+                net.add_node(nd,
+                    label="",
+                    color={"background": base_hex,
+                           "border": base_hex,
+                           "highlight": {"background": base_hex, "border": "#ffff00"}},
+                    size=node_size,
+                    opacity=max(0.4, conc),
+                    title=(f"Node {nd}<br>"
+                           f"True: {CORA_CLASSES[cls_idx]}<br>"
+                           f"Pred: {CORA_CLASSES[int(pred_np[nd])]}<br>"
+                           f"Norm entropy: {float(entropy_np[nd]):.3f}<br>"
+                           f"Concentration: {conc:.3f}<br>"
+                           f"Size: {node_size}"),
+                    x=x_pos, y=y_pos, physics=False)
 
-            net.add_node(nd, label="", color=color, size=size,
-                         title=title, opacity=opacity)
+            elif mode == "In-Degree (Citations Received)":
+                raw = float(in_deg_np[nd])
+                norm = min(raw / (p95_in + 1e-6), 1.0)
+                node_size = int(5 + norm * 40)
+                net.add_node(nd,
+                    label="",
+                    color={"background": base_hex, "border": base_hex,
+                           "highlight": {"background": base_hex, "border": "#ffff00"}},
+                    size=node_size,
+                    opacity=max(0.35, norm * 0.65 + 0.35),
+                    title=(f"Node {nd}<br>"
+                           f"True: {CORA_CLASSES[cls_idx]}<br>"
+                           f"Pred: {CORA_CLASSES[int(pred_np[nd])]}<br>"
+                           f"In-degree: {int(raw)}<br>"
+                           f"Size (norm): {norm:.3f}"),
+                    x=x_pos, y=y_pos, physics=False)
+
+            elif mode == "Out-Degree (Papers Cited)":
+                raw = float(out_deg_np[nd])
+                norm = min(raw / (p95_out + 1e-6), 1.0)
+                node_size = int(5 + norm * 40)
+                net.add_node(nd,
+                    label="",
+                    color={"background": base_hex, "border": base_hex,
+                           "highlight": {"background": base_hex, "border": "#ffff00"}},
+                    size=node_size,
+                    opacity=max(0.35, norm * 0.65 + 0.35),
+                    title=(f"Node {nd}<br>"
+                           f"True: {CORA_CLASSES[cls_idx]}<br>"
+                           f"Pred: {CORA_CLASSES[int(pred_np[nd])]}<br>"
+                           f"Out-degree: {int(raw)}<br>"
+                           f"Size (norm): {norm:.3f}"),
+                    x=x_pos, y=y_pos, physics=False)
+
+            elif mode == "Misclassification Heatmap":
+                is_correct = int(pred_np[nd]) == cls_idx
+                if is_correct:
+                    color   = "#2a2a3a"
+                    size    = 8
+                    opacity = 0.25
+                    title_str = (f"Node {nd}<br>"
+                                 f"True: {CORA_CLASSES[cls_idx]}<br>"
+                                 f"✅ Correct ({float(conf_np[nd]):.1%})")
+                else:
+                    c = float(conf_np[nd])
+                    intensity = int(80 + c * 175)
+                    color   = f"#{intensity:02x}1010"
+                    size    = int(10 + c * 25)
+                    opacity = 0.5 + c * 0.5
+                    title_str = (f"Node {nd}<br>"
+                                 f"True: {CORA_CLASSES[cls_idx]}<br>"
+                                 f"Pred: {CORA_CLASSES[int(pred_np[nd])]}<br>"
+                                 f"❌ Wrong (conf: {c:.1%})<br>"
+                                 f"Color intensity: {intensity}")
+                net.add_node(nd,
+                    label="",
+                    color={"background": color, "border": color,
+                           "highlight": {"background": color, "border": "#ffff00"}},
+                    size=size,
+                    opacity=opacity,
+                    title=title_str,
+                    x=x_pos, y=y_pos, physics=False)
 
         max_alpha = float(alpha_np.max()) if alpha_np.max() > 0 else 1.0
 
@@ -344,33 +441,27 @@ with tab2:
                 net.add_edge(u, v, width=width, color="#ffffff",
                              arrows="to", smooth={"type": "dynamic"})
             else:
-                pass  # Modes 2 and 3: color is the signal, no edges drawn
+                pass  # Modes 2 and 3: size is the signal, no edges drawn
 
-        html = net.generate_html()
-        freeze_js = """
-<script type="text/javascript">
-  document.addEventListener("DOMContentLoaded", function() {
-    var checkNetwork = setInterval(function() {
-      if (window.network) {
-        clearInterval(checkNetwork);
-        network.once("stabilized", function() {
-          network.fit({ animation: { duration: 500, easingFunction: "easeInOutQuad" } });
-          network.setOptions({ physics: { enabled: false } });
-        });
-      }
-    }, 100);
-  });
-</script>
-"""
-        html = html.replace("</body>", freeze_js + "</body>")
-        return html
+        return net.generate_html()
+
+    # Compute spring layout once per session (5–15 s for 2708 nodes)
+    if "node_positions" not in st.session_state:
+        with st.spinner("Computing graph layout (one-time)..."):
+            G_layout = nx.Graph()
+            src_np_layout = st.session_state.ei[0].numpy()
+            dst_np_layout = st.session_state.ei[1].numpy()
+            for u, v in zip(src_np_layout, dst_np_layout):
+                G_layout.add_edge(int(u), int(v))
+            pos = nx.spring_layout(G_layout, seed=42, k=2.5)
+            st.session_state.node_positions = pos
 
     # Cache rendered HTML per mode/selection to avoid re-generating on every
     # interaction (2708-node graphs are slow to build from scratch each time).
     if mode == "Class Filter":
-        cache_key = "v3_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
+        cache_key = "v5_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
     else:
-        cache_key = f"v3_pyvis_html_{mode}"
+        cache_key = f"v5_pyvis_html_{mode}"
 
     if cache_key not in st.session_state:
         st.session_state[cache_key] = build_pyvis_graph(mode, selected_classes, st.session_state)
