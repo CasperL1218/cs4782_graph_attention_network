@@ -309,7 +309,7 @@ def fig_ego_grid(nodes, ei, alpha1, labels, pred_labels, out_path):
 
     for i, (ax, node) in enumerate(zip(axes, nodes)):
         _draw_ego(ax, node, ei, alpha1, labels, pred_labels=pred_labels,
-                  show_legend_note=(i == 0))
+                  show_legend_note=False)
 
     for ax in axes[n:]:
         ax.axis("off")
@@ -328,12 +328,13 @@ def fig_ego_grid(nodes, ei, alpha1, labels, pred_labels, out_path):
         bbox_to_anchor=(0.5, -0.04),
     )
 
-    # Shared caption
-    fig.text(
-        0.5, 1.01,
+    fig.suptitle(
         "GAT Attention Weights — Cora Ego-Graphs\n"
-        "Edge thickness ∝ mean α across 8 heads  |  center node outlined in black  |  red edge = self-loop",
-        ha="center", va="bottom", fontsize=10,
+        "Edge thickness ∝ mean α across 8 heads  |  "
+        "center node outlined in black  |  red edge = self-loop\n"
+        "Node fill = true label  |  outer ring = predicted label  |  "
+        "matching colors = correctly classified",
+        fontsize=11, y=1.01
     )
 
     plt.tight_layout(rect=[0, 0.05, 1, 1])
@@ -357,13 +358,16 @@ def fig_heads(node, ei, alpha1, labels, pred_labels, out_path):
     for h in range(num_heads):
         _draw_ego(axes[h], node, ei, alpha1, labels, pred_labels=pred_labels,
                   head=h, show_title=False, uniform_line=False,
-                  show_legend_note=(h == 0))
+                  show_legend_note=False)
         axes[h].set_title(f"Head {h+1}", fontsize=9, pad=3)
 
     cls_name = CORA_CLASSES[int(labels[node])]
     fig.suptitle(
         f"Per-Head Attention — Node {node}  [{cls_name}]\n"
-        "Each subplot shows one attention head's α distribution over the same neighborhood",
+        "Each subplot shows one attention head's α distribution "
+        "over the same neighborhood\n"
+        "Node fill = true label  |  outer ring = predicted label  |  "
+        "matching colors = correctly classified",
         fontsize=11, y=1.02,
     )
 
@@ -621,13 +625,17 @@ def fig_directed_subgraph(center_node, ei, alpha1, labels, pred_labels, out_path
     ]
     for i in range(7):
         legend_handles.append(mpatches.Patch(color=PALETTE[i], label=CORA_CLASSES[i]))
-    ax.legend(handles=legend_handles, loc="upper left", fontsize=8, frameon=True)
+    ax.legend(handles=legend_handles, loc="lower left",
+              fontsize=8, frameon=True,
+              bbox_to_anchor=(0.0, 0.0))
 
     ax.set_title(
         f"2-Hop Directed Attention Subgraph — Node {center_node} "
         f"[{CORA_CLASSES[int(labels[center_node])]}]\n"
         "Arrow width & color ∝ mean α (layer 1, averaged over 8 heads)  |  "
-        "arrows show direction of attention",
+        "arrows show direction of attention\n"
+        "Center node selected as correctly-classified test node with most "
+        "diverse neighbor labels (max neighborhood entropy)",
         fontsize=11,
     )
     ax.axis("off")
