@@ -290,9 +290,14 @@ with tab2:
 
             if mode == "Class Filter":
                 if CORA_CLASSES[cls_idx] in selected_classes:
-                    color, size, opacity = base_hex, 22, 1.0
+                    color, size, opacity = base_hex, 35, 1.0
                 else:
-                    color, size, opacity = "#444444", 5, 0.3
+                    color, size, opacity = "#444444", 6, 0.3
+                title = (f"Node {nd}<br>"
+                         f"True: {CORA_CLASSES[cls_idx]}<br>"
+                         f"Pred: {CORA_CLASSES[int(pred_np[nd])]}<br>"
+                         f"Conf: {conf_np[nd]:.1%}"
+                         f"<br>Color: {color}")
 
             elif mode == "Confidence Overlay":
                 c = float(conf_np[nd])
@@ -300,19 +305,27 @@ with tab2:
                 r = int((1 - c_boosted) * 0x88 + c_boosted * base_rgba[0] * 255)
                 g = int((1 - c_boosted) * 0x88 + c_boosted * base_rgba[1] * 255)
                 b = int((1 - c_boosted) * 0x88 + c_boosted * base_rgba[2] * 255)
-                color, size, opacity = f"#{r:02x}{g:02x}{b:02x}", 12, 0.95
+                color, size, opacity = f"#{r:02x}{g:02x}{b:02x}", 20, 0.95
+                title = (f"Node {nd}<br>"
+                         f"True: {CORA_CLASSES[cls_idx]}<br>"
+                         f"Pred: {CORA_CLASSES[int(pred_np[nd])]}<br>"
+                         f"Conf: {conf_np[nd]:.1%}<br>"
+                         f"Conf (boosted): {float(conf_np[nd])**0.5:.3f}<br>"
+                         f"Color: {color}")
 
             elif mode == "Attention Concentration":
                 conc = (1.0 - float(entropy_np[nd])) ** 0.5
                 r = int((1 - conc) * 0xaa + conc * base_rgba[0] * 255)
                 g = int((1 - conc) * 0xaa + conc * base_rgba[1] * 255)
                 b = int((1 - conc) * 0xaa + conc * base_rgba[2] * 255)
-                color, size, opacity = f"#{r:02x}{g:02x}{b:02x}", 12, 0.9
+                color, size, opacity = f"#{r:02x}{g:02x}{b:02x}", 20, 0.9
+                title = (f"Node {nd}<br>"
+                         f"True: {CORA_CLASSES[cls_idx]}<br>"
+                         f"Pred: {CORA_CLASSES[int(pred_np[nd])]}<br>"
+                         f"Raw entropy (norm): {float(entropy_np[nd]):.3f}<br>"
+                         f"Conc (boosted): {(1-float(entropy_np[nd]))**0.5:.3f}<br>"
+                         f"Color: {color}")
 
-            title = (f"Node {nd}<br>"
-                     f"True: {CORA_CLASSES[cls_idx]}<br>"
-                     f"Pred: {CORA_CLASSES[int(pred_np[nd])]}<br>"
-                     f"Conf: {conf_np[nd]:.1%}")
             net.add_node(nd, label="", color=color, size=size,
                          title=title, opacity=opacity)
 
@@ -341,6 +354,7 @@ with tab2:
       if (window.network) {
         clearInterval(checkNetwork);
         network.once("stabilized", function() {
+          network.fit({ animation: { duration: 500, easingFunction: "easeInOutQuad" } });
           network.setOptions({ physics: { enabled: false } });
         });
       }
@@ -354,9 +368,9 @@ with tab2:
     # Cache rendered HTML per mode/selection to avoid re-generating on every
     # interaction (2708-node graphs are slow to build from scratch each time).
     if mode == "Class Filter":
-        cache_key = "v2_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
+        cache_key = "v3_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
     else:
-        cache_key = f"v2_pyvis_html_{mode}"
+        cache_key = f"v3_pyvis_html_{mode}"
 
     if cache_key not in st.session_state:
         st.session_state[cache_key] = build_pyvis_graph(mode, selected_classes, st.session_state)
