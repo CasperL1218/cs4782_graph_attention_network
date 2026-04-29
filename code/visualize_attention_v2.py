@@ -236,15 +236,35 @@ def _draw_ego(ax, node, ei, alpha, labels, pred_labels=None,
     for idx, (nbr, wn) in enumerate(zip(nbrs, w_norm)):
         p0, p1 = pos[node], pos[int(nbr)]
         is_self = int(nbr) == node
-        ax.plot(
-            [p0[0], p1[0]], [p0[1], p1[1]],
-            color="#555555" if not is_self else "#cc4444",
-            linewidth=0.4 + wn * 4.5,
-            alpha=max(0.15, wn),
-            zorder=1,
-            solid_capstyle="round",
-        )
-        if not is_self:
+        if is_self:
+            loop = mpatches.Arc(
+                (0.18, -0.18),
+                width=0.32,
+                height=0.32,
+                angle=0,
+                theta1=0,
+                theta2=270,
+                color="#cc4444",
+                linewidth=0.5 + wn * 3.5,
+                alpha=max(0.3, wn),
+                zorder=1,
+            )
+            ax.add_patch(loop)
+            ax.text(0.38, -0.28, f"{ws[idx]:.3f}",
+                    fontsize=5, ha="center", va="center",
+                    color="white",
+                    bbox=dict(boxstyle="round,pad=0.1", fc="#aa2222",
+                              ec="none", alpha=0.75),
+                    zorder=5)
+        else:
+            ax.plot(
+                [p0[0], p1[0]], [p0[1], p1[1]],
+                color="#555555",
+                linewidth=0.4 + wn * 4.5,
+                alpha=max(0.15, wn),
+                zorder=1,
+                solid_capstyle="round",
+            )
             mid_x = (p0[0] + p1[0]) / 2
             mid_y = (p0[1] + p1[1]) / 2
             ax.text(mid_x, mid_y, f"{ws[idx]:.3f}",
@@ -614,11 +634,11 @@ def fig_directed_subgraph(center_node, ei, alpha1, labels, pred_labels, out_path
     plt.colorbar(sm, ax=ax, label="Mean attention weight α", shrink=0.6)
 
     legend_handles = [
-        ax.scatter([], [], s=500, c=[[0.5, 0.5, 0.5, 1.0]],
+        ax.scatter([], [], s=120, c=[[0.5, 0.5, 0.5, 1.0]],
                    linewidths=0, label="Center node"),
-        ax.scatter([], [], s=250, c=[[0.5, 0.5, 0.5, 1.0]],
+        ax.scatter([], [], s=60, c=[[0.5, 0.5, 0.5, 1.0]],
                    linewidths=0, label="1-hop neighbor"),
-        ax.scatter([], [], s=100, c=[[0.5, 0.5, 0.5, 1.0]],
+        ax.scatter([], [], s=25, c=[[0.5, 0.5, 0.5, 1.0]],
                    linewidths=0, label="2-hop neighbor"),
         mpatches.Patch(color="none", label="inner fill = true label"),
         mpatches.Patch(color="none", label="outer ring = predicted label"),
@@ -627,7 +647,10 @@ def fig_directed_subgraph(center_node, ei, alpha1, labels, pred_labels, out_path
         legend_handles.append(mpatches.Patch(color=PALETTE[i], label=CORA_CLASSES[i]))
     ax.legend(handles=legend_handles, loc="lower left",
               fontsize=8, frameon=True,
-              bbox_to_anchor=(0.0, 0.0))
+              bbox_to_anchor=(0.0, 0.0),
+              markerscale=1.0,
+              borderpad=1.0,
+              labelspacing=0.6)
 
     ax.set_title(
         f"2-Hop Directed Attention Subgraph — Node {center_node} "
