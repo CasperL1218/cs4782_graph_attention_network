@@ -284,7 +284,7 @@ with tab2:
         r, g, b = [int(x * 255) for x in rgba[:3]]
         return f"#{r:02x}{g:02x}{b:02x}"
 
-    def build_pyvis_graph(mode, selected_classes, s):
+    def build_pyvis_graph(mode, selected_classes, s, node_filter="All"):
         net = Network(height="700px", width="100%", bgcolor="#1a1a2e",
                       font_color="white")
         net.toggle_physics(False)
@@ -314,11 +314,7 @@ with tab2:
                     color, size, opacity = base_hex, 35, 1.0
                 else:
                     color, size, opacity = "#444444", 6, 0.3
-                title = (f"Node {nd}<br>"
-                         f"True: {CORA_CLASSES[cls_idx]}<br>"
-                         f"Pred: {CORA_CLASSES[int(pred_np[nd])]}<br>"
-                         f"Conf: {conf_np[nd]:.1%}"
-                         f"<br>Color: {color}")
+                title = f"#{nd} | {CORA_CLASSES[cls_idx]} | {'✅' if CORA_CLASSES[cls_idx] in selected_classes else '⬜'}"
                 net.add_node(nd, label="", color=color, size=size,
                              title=title, opacity=opacity,
                              x=x_pos, y=y_pos, physics=False)
@@ -337,12 +333,7 @@ with tab2:
                     size=node_size,
                     borderWidth=border_width,
                     opacity=0.9,
-                    title=(f"Node {nd}<br>"
-                           f"True: {CORA_CLASSES[cls_idx]}<br>"
-                           f"Pred: {CORA_CLASSES[int(pred_np[nd])]}<br>"
-                           f"Conf: {c:.1%}<br>"
-                           f"Size: {node_size}<br>"
-                           f"{'✅ Correct' if is_correct else '❌ Wrong'}"),
+                    title=f"#{nd} | True: {CORA_CLASSES[cls_idx]} | Pred: {CORA_CLASSES[int(pred_np[nd])]} | Conf: {float(conf_np[nd]):.0%} | {'✅' if int(pred_np[nd])==cls_idx else '❌'}",
                     x=x_pos, y=y_pos, physics=False)
 
             elif mode == "Attention Concentration":
@@ -355,15 +346,15 @@ with tab2:
                            "highlight": {"background": base_hex, "border": "#ffff00"}},
                     size=node_size,
                     opacity=max(0.4, conc),
-                    title=(f"Node {nd}<br>"
-                           f"True: {CORA_CLASSES[cls_idx]}<br>"
-                           f"Pred: {CORA_CLASSES[int(pred_np[nd])]}<br>"
-                           f"Norm entropy: {float(entropy_np[nd]):.3f}<br>"
-                           f"Concentration: {conc:.3f}<br>"
-                           f"Size: {node_size}"),
+                    title=f"#{nd} | {CORA_CLASSES[cls_idx]} | Entropy: {float(entropy_np[nd]):.2f} | Conc: {1-float(entropy_np[nd]):.2f}",
                     x=x_pos, y=y_pos, physics=False)
 
             elif mode == "In-Degree (Citations Received)":
+                is_correct = int(pred_np[nd]) == cls_idx
+                if node_filter == "Correct only" and not is_correct:
+                    continue
+                if node_filter == "Misclassified only" and is_correct:
+                    continue
                 raw = float(in_deg_np[nd])
                 norm = min(raw / (p95_in + 1e-6), 1.0)
                 node_size = int(5 + norm * 40)
@@ -373,14 +364,15 @@ with tab2:
                            "highlight": {"background": base_hex, "border": "#ffff00"}},
                     size=node_size,
                     opacity=max(0.35, norm * 0.65 + 0.35),
-                    title=(f"Node {nd}<br>"
-                           f"True: {CORA_CLASSES[cls_idx]}<br>"
-                           f"Pred: {CORA_CLASSES[int(pred_np[nd])]}<br>"
-                           f"In-degree: {int(raw)}<br>"
-                           f"Size (norm): {norm:.3f}"),
+                    title=f"#{nd} | {CORA_CLASSES[cls_idx]} | In-deg: {int(in_deg_np[nd])} | {'✅' if int(pred_np[nd])==cls_idx else '❌'}",
                     x=x_pos, y=y_pos, physics=False)
 
             elif mode == "Out-Degree (Papers Cited)":
+                is_correct = int(pred_np[nd]) == cls_idx
+                if node_filter == "Correct only" and not is_correct:
+                    continue
+                if node_filter == "Misclassified only" and is_correct:
+                    continue
                 raw = float(out_deg_np[nd])
                 norm = min(raw / (p95_out + 1e-6), 1.0)
                 node_size = int(5 + norm * 40)
@@ -390,11 +382,7 @@ with tab2:
                            "highlight": {"background": base_hex, "border": "#ffff00"}},
                     size=node_size,
                     opacity=max(0.35, norm * 0.65 + 0.35),
-                    title=(f"Node {nd}<br>"
-                           f"True: {CORA_CLASSES[cls_idx]}<br>"
-                           f"Pred: {CORA_CLASSES[int(pred_np[nd])]}<br>"
-                           f"Out-degree: {int(raw)}<br>"
-                           f"Size (norm): {norm:.3f}"),
+                    title=f"#{nd} | {CORA_CLASSES[cls_idx]} | Out-deg: {int(out_deg_np[nd])} | {'✅' if int(pred_np[nd])==cls_idx else '❌'}",
                     x=x_pos, y=y_pos, physics=False)
 
             elif mode == "Misclassification Heatmap":
@@ -403,20 +391,14 @@ with tab2:
                     color   = "#2a2a3a"
                     size    = 8
                     opacity = 0.25
-                    title_str = (f"Node {nd}<br>"
-                                 f"True: {CORA_CLASSES[cls_idx]}<br>"
-                                 f"✅ Correct ({float(conf_np[nd]):.1%})")
+                    title_str = f"#{nd} | {CORA_CLASSES[cls_idx]} | Conf: {float(conf_np[nd]):.0%} | ✅"
                 else:
                     c = float(conf_np[nd])
                     intensity = int(80 + c * 175)
                     color   = f"#{intensity:02x}1010"
                     size    = int(10 + c * 25)
                     opacity = 0.5 + c * 0.5
-                    title_str = (f"Node {nd}<br>"
-                                 f"True: {CORA_CLASSES[cls_idx]}<br>"
-                                 f"Pred: {CORA_CLASSES[int(pred_np[nd])]}<br>"
-                                 f"❌ Wrong (conf: {c:.1%})<br>"
-                                 f"Color intensity: {intensity}")
+                    title_str = f"#{nd} | True: {CORA_CLASSES[cls_idx]} | Pred: {CORA_CLASSES[int(pred_np[nd])]} | Conf: {float(conf_np[nd]):.0%} | ❌"
                 net.add_node(nd,
                     label="",
                     color={"background": color, "border": color,
@@ -458,13 +440,24 @@ with tab2:
 
     # Cache rendered HTML per mode/selection to avoid re-generating on every
     # interaction (2708-node graphs are slow to build from scratch each time).
+    node_filter = "All"
+    if mode in ["In-Degree (Citations Received)", "Out-Degree (Papers Cited)"]:
+        node_filter = st.radio(
+            "Show nodes",
+            ["All", "Correct only", "Misclassified only"],
+            horizontal=True,
+            key="deg_node_filter"
+        )
+
     if mode == "Class Filter":
-        cache_key = "v6_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
+        cache_key = "v7_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
+    elif mode in ["In-Degree (Citations Received)", "Out-Degree (Papers Cited)"]:
+        cache_key = f"v7_pyvis_html_{mode}_{node_filter}"
     else:
-        cache_key = f"v6_pyvis_html_{mode}"
+        cache_key = f"v7_pyvis_html_{mode}"
 
     if cache_key not in st.session_state:
-        st.session_state[cache_key] = build_pyvis_graph(mode, selected_classes, st.session_state)
+        st.session_state[cache_key] = build_pyvis_graph(mode, selected_classes, st.session_state, node_filter)
 
     components.html(st.session_state[cache_key], height=720, scrolling=False)
 
