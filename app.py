@@ -450,11 +450,11 @@ with tab2:
         )
 
     if mode == "Class Filter":
-        cache_key = "v7_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
+        cache_key = "v8_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
     elif mode in ["In-Degree (Citations Received)", "Out-Degree (Papers Cited)"]:
-        cache_key = f"v7_pyvis_html_{mode}_{node_filter}"
+        cache_key = f"v8_pyvis_html_{mode}_{node_filter}"
     else:
-        cache_key = f"v7_pyvis_html_{mode}"
+        cache_key = f"v8_pyvis_html_{mode}"
 
     if cache_key not in st.session_state:
         st.session_state[cache_key] = build_pyvis_graph(mode, selected_classes, st.session_state, node_filter)
