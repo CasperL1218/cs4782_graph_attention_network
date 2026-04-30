@@ -57,8 +57,9 @@ def train(dataset_name="Cora", num_runs=5, num_epochs=100000,
                 improved = True
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
-                best_state = copy.deepcopy(model.state_dict())
                 improved = True
+            if improved:
+                best_state = copy.deepcopy(model.state_dict())
 
             if improved:
                 patience_counter = 0
