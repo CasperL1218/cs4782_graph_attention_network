@@ -9,9 +9,42 @@ from model import GAT
 from data_utils import load_dataset
 
 
+def plot_best_run(run_histories, test_accs, dataset_name, save_path):
+    import matplotlib.pyplot as plt
+
+    best_run = int(np.argmax(test_accs))
+    val_losses, val_accs = run_histories[best_run]
+    epochs = list(range(1, len(val_losses) + 1))
+    peak_epoch = int(np.argmax(val_accs)) + 1
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
+    fig.suptitle(
+        f"{dataset_name} — best run (run {best_run + 1}, "
+        f"test acc {test_accs[best_run]*100:.1f}%)",
+        fontsize=12,
+    )
+
+    ax1.plot(epochs, val_losses, color="tab:blue", linewidth=1.2)
+    ax1.set_ylabel("Validation loss")
+    ax1.grid(True, linewidth=0.4)
+
+    ax2.plot(epochs, [a * 100 for a in val_accs], color="tab:orange", linewidth=1.2)
+    ax2.axvline(peak_epoch, color="gray", linestyle="--", linewidth=0.8,
+                label=f"peak val acc epoch {peak_epoch}")
+    ax2.set_ylabel("Validation accuracy (%)")
+    ax2.set_xlabel("Epoch")
+    ax2.legend(fontsize=9)
+    ax2.grid(True, linewidth=0.4)
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+    print(f"Training curve saved → {save_path}")
+
+
 def train(dataset_name="Cora", num_runs=5, num_epochs=100000,
           lr=0.005, weight_decay=5e-4, patience=100, dropout=0.6,
-          data_root="/tmp/pyg_data", checkpoint=None):
+          data_root="/tmp/pyg_data", checkpoint=None, plot=None):
 
     data = load_dataset(name=dataset_name, root=data_root)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -21,6 +54,7 @@ def train(dataset_name="Cora", num_runs=5, num_epochs=100000,
     num_classes = int(data.y.max().item()) + 1
 
     test_accs = []
+    run_histories = []  # list of (val_loss_hist, val_acc_hist) per run
 
     for run in range(num_runs):
         torch.manual_seed(run)
@@ -32,6 +66,8 @@ def train(dataset_name="Cora", num_runs=5, num_epochs=100000,
         best_val_loss = float("inf")
         best_state = None
         patience_counter = 0
+        val_loss_hist = []
+        val_acc_hist = []
 
         for epoch in range(1, num_epochs + 1):
             # Training step
@@ -49,6 +85,9 @@ def train(dataset_name="Cora", num_runs=5, num_epochs=100000,
                 val_loss = F.nll_loss(out[data.val_mask], data.y[data.val_mask]).item()
                 val_pred = out[data.val_mask].argmax(dim=1)
                 val_acc = (val_pred == data.y[data.val_mask]).float().mean().item()
+
+            val_loss_hist.append(val_loss)
+            val_acc_hist.append(val_acc)
 
             # Early stopping: reset if either val loss or val acc improves
             improved = False
@@ -85,6 +124,7 @@ def train(dataset_name="Cora", num_runs=5, num_epochs=100000,
 
         print(f"Run {run+1}/{num_runs} | Test Accuracy: {test_acc*100:.1f}%")
         test_accs.append(test_acc)
+        run_histories.append((val_loss_hist, val_acc_hist))
 
         # Save best model from the last run if a path is given
         if checkpoint and run == num_runs - 1:
@@ -96,6 +136,10 @@ def train(dataset_name="Cora", num_runs=5, num_epochs=100000,
     mean = np.mean(test_accs) * 100
     std = np.std(test_accs) * 100
     print(f"\nTest Accuracy over {num_runs} runs: {mean:.1f} ± {std:.1f}%")
+
+    if plot:
+        plot_best_run(run_histories, test_accs, dataset_name, plot)
+
     return test_accs
 
 
@@ -108,6 +152,8 @@ if __name__ == "__main__":
     parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--checkpoint", type=str, default=None,
                         help="Path to save the best model (e.g. cora_best.pt)")
+    parser.add_argument("--plot", type=str, default=None,
+                        help="Path to save training curve PNG (e.g. training_curve.png)")
     args = parser.parse_args()
 
     train(
@@ -116,4 +162,5 @@ if __name__ == "__main__":
         num_epochs=args.epochs,
         patience=args.patience,
         checkpoint=args.checkpoint,
+        plot=args.plot,
     )
