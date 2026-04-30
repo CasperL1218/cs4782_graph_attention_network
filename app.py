@@ -221,9 +221,16 @@ with tab1:
         nbr   = int(nbrs[idx])
         w     = float(weights[idx])
         is_sl = bool(self_loop_mask[idx])
-        label = CORA_CLASSES[int(s.labels[nbr])]
-        rows.append({"Neighbor": f"{nbr} {'(self)' if is_sl else ''}",
-                     "Class": label, "Mean α": f"{w:.4f}"})
+        true_cls = CORA_CLASSES[int(s.labels[nbr])]
+        pred_cls = CORA_CLASSES[int(s.pred[nbr])]
+        correct  = "✅" if s.labels[nbr] == s.pred[nbr] else "❌"
+        rows.append({
+            "Neighbor":   f"{nbr} {'(self)' if is_sl else ''}",
+            "True Class": true_cls,
+            "Prediction": pred_cls,
+            "Correct":    correct,
+            "Mean α":     f"{w:.4f}",
+        })
 
     st.subheader("Neighbor Attention Weights (ranked)")
     st.table(rows)
@@ -256,7 +263,7 @@ with tab2:
 
     # Precompute attention entropy and degree arrays per node (cached after first render)
     s = st.session_state
-    if "in_degree" not in st.session_state:
+    if "in_degree_v2" not in st.session_state:
         src_np_t2 = st.session_state.ei[0].numpy()
         dst_np_t2 = st.session_state.ei[1].numpy()
         in_deg  = np.zeros(st.session_state.num_nodes, dtype=np.int32)
@@ -266,8 +273,8 @@ with tab2:
             if u < v:
                 out_deg[u] += 1
                 in_deg[v]  += 1
-        st.session_state.in_degree  = in_deg
-        st.session_state.out_degree = out_deg
+        st.session_state.in_degree_v2  = in_deg
+        st.session_state.out_degree_v2 = out_deg
 
     if "node_entropy" not in st.session_state:
         src_np    = s.ei[0].numpy()
@@ -299,8 +306,8 @@ with tab2:
         pred_np    = s.pred.numpy()
         conf_np    = s.confidence.numpy()
         entropy_np = s.node_entropy                  # [N] normalized 0-1
-        in_deg_np  = s.in_degree
-        out_deg_np = s.out_degree
+        in_deg_np  = s.in_degree_v2
+        out_deg_np = s.out_degree_v2
 
         in_deg_max  = float(in_deg_np.max())
         out_deg_max = float(out_deg_np.max())
@@ -457,11 +464,11 @@ with tab2:
         )
 
     if mode == "Class Filter":
-        cache_key = "v9_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
+        cache_key = "v10_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
     elif mode in ["In-Degree (Citations Received)", "Out-Degree (Papers Cited)"]:
-        cache_key = f"v9_pyvis_html_{mode}_{node_filter}"
+        cache_key = f"v10_pyvis_html_{mode}_{node_filter}"
     else:
-        cache_key = f"v9_pyvis_html_{mode}"
+        cache_key = f"v10_pyvis_html_{mode}"
 
     if cache_key not in st.session_state:
         st.session_state[cache_key] = build_pyvis_graph(mode, selected_classes, st.session_state, node_filter)
