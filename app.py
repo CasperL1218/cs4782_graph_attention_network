@@ -475,6 +475,70 @@ with tab2:
 
     components.html(st.session_state[cache_key], height=720, scrolling=False)
 
+    MODE_DESCRIPTIONS = {
+        "Class Filter": """
+**Class Filter** — Highlights nodes belonging to the selected class(es) in their
+class color (large dots). All other nodes are shown as small gray dots.
+Edges show attention flow **outward from selected-class nodes**, with thickness
+proportional to mean attention weight α across all 8 heads.
+
+- **Colored large dot** = node belongs to a selected class
+- **Gray small dot** = node belongs to a non-selected class
+- **Arrow thickness** = strength of attention paid to that neighbor
+- **Arrow direction** = the source node is attending TO the target node
+""",
+        "Confidence Overlay": """
+**Confidence Overlay** — Every node is shown in its true class color.
+Size encodes how confident the model is i prediction (softmax max probability).
+
+- **Large dot** = model is very confident (e.g. 95%+ probability on winning class)
+- **Small dot** = model is uncertain (probability spread across multiple classes)
+- **White border ring** = misclassified node (predicted class ≠ true class)
+- **No edges shown** — color and size are the signal here
+""",
+        "Attention Concentration": """
+**Attention Concentration** — Every node is shown in its true class color.
+Size encodes how selectively the node attends to its neighbors (attention entropy).
+
+- **Large dot** = low entropy — GAT strongly focuses on one or few neighbors
+- **Small dot** = high entropy — GAT spreads attention nearly equally (GCN-like behavior)
+- **No edges shown** — nodes where GAT is "being picky" stand out by size
+- Entropy is normalized across all 2708 nodes, so size is relative to the full graph
+""",
+        "In-Degree (Citations Received)": """
+**In-Degree (Citations Received)** — Every node is shown in its true class color.
+Size encodes hpapers cite this paper (in-degree in the original
+directed citation graph).
+
+- **Large dot** = influential hub paper cited by many others
+- **Small dot** = peripheral paper with few or no citations
+- Degree is square-root scaled so differences at the low end are still visible
+- Use the **Show nodes** toggle to compare hub papers that are correctly vs. incorrectly classified
+""",
+        "Out-Degree (Papers Cited)": """
+**Out-Degree (Papers Cited)** — Every node is shown in its true class color.
+Size encodes how many papers this paper cites (out-degree in the original
+directed citation graph).
+
+- **Large dot** = paper that references many others (broad literature review)
+- **Small dot** = paper with few references (focused or self-contained work)
+- Degree is square-root scaled so differences at the low end are still visible
+- Use the **Show nodes** toggle to compare heavily-citing papers that are correctly vs. incorrectly classified
+""",
+        "Misclassification Heatmap": """
+**Misclassification Heatmap** — Focuses attention on where the model goes wrong.
+
+- **Dark/invisible dot** = correctly classified node (fades into background)
+- **Red dot** = misclassified node; color intensity and size both encode confidence
+- **Bright large red dot** = model was confidently wrong (high probability on the wrong class)
+- **Dim small red dot** = model was uncertainly wrong (low probability, borderline case)
+- No edges shown — spatial distribution of errors is the story
+""",
+    }
+
+    st.markdown("---")
+    st.markdown(MODE_DESCRIPTIONS[mode])
+
     # --- Class color legend ---
     st.markdown("**Class legend:**")
     cols = st.columns(7)
