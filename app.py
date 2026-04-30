@@ -259,10 +259,11 @@ with tab2:
         dst_np_t2 = st.session_state.ei[1].numpy()
         in_deg  = np.zeros(st.session_state.num_nodes, dtype=np.int32)
         out_deg = np.zeros(st.session_state.num_nodes, dtype=np.int32)
-        for v in dst_np_t2:
-            in_deg[int(v)] += 1
-        for u in src_np_t2:
-            out_deg[int(u)] += 1
+        for u, v in zip(src_np_t2, dst_np_t2):
+            u, v = int(u), int(v)
+            if u < v:
+                out_deg[u] += 1
+                in_deg[v]  += 1
         st.session_state.in_degree  = in_deg
         st.session_state.out_degree = out_deg
 
@@ -299,15 +300,15 @@ with tab2:
         in_deg_np  = s.in_degree
         out_deg_np = s.out_degree
 
-        p95_in  = float(np.percentile(in_deg_np, 95))
-        p95_out = float(np.percentile(out_deg_np, 95))
+        in_deg_max  = float(in_deg_np.max())
+        out_deg_max = float(out_deg_np.max())
 
         for nd in range(s.num_nodes):
             cls_idx   = int(labels_np[nd])
             base_rgba = PALETTE[cls_idx]
             base_hex  = rgba_to_hex(base_rgba)
-            x_pos = float(st.session_state.node_positions[nd][0]) * 2000
-            y_pos = float(st.session_state.node_positions[nd][1]) * 2000
+            x_pos = float(st.session_state.node_positions[nd][0]) * 4500
+            y_pos = float(st.session_state.node_positions[nd][1]) * 4500
 
             if mode == "Class Filter":
                 if CORA_CLASSES[cls_idx] in selected_classes:
@@ -322,7 +323,9 @@ with tab2:
             elif mode == "Confidence Overlay":
                 c = float(conf_np[nd])
                 is_correct = int(pred_np[nd]) == cls_idx
-                node_size = int(8 + c * 35)
+                raw = c
+                norm = raw ** 0.5
+                node_size = int(5 + norm * 65)
                 border_color = base_hex if is_correct else "#ffffff"
                 border_width = 1 if is_correct else 3
                 net.add_node(nd,
@@ -338,7 +341,9 @@ with tab2:
 
             elif mode == "Attention Concentration":
                 conc = 1.0 - float(entropy_np[nd])
-                node_size = int(8 + conc * 35)
+                raw = conc
+                norm = raw ** 0.5
+                node_size = int(5 + norm * 65)
                 net.add_node(nd,
                     label="",
                     color={"background": base_hex,
@@ -356,8 +361,8 @@ with tab2:
                 if node_filter == "Misclassified only" and is_correct:
                     continue
                 raw = float(in_deg_np[nd])
-                norm = min(raw / (p95_in + 1e-6), 1.0)
-                node_size = int(5 + norm * 40)
+                norm = (raw / (in_deg_max + 1e-6)) ** 0.5
+                node_size = int(5 + norm * 65)
                 net.add_node(nd,
                     label="",
                     color={"background": base_hex, "border": base_hex,
@@ -374,8 +379,8 @@ with tab2:
                 if node_filter == "Misclassified only" and is_correct:
                     continue
                 raw = float(out_deg_np[nd])
-                norm = min(raw / (p95_out + 1e-6), 1.0)
-                node_size = int(5 + norm * 40)
+                norm = (raw / (out_deg_max + 1e-6)) ** 0.5
+                node_size = int(5 + norm * 65)
                 net.add_node(nd,
                     label="",
                     color={"background": base_hex, "border": base_hex,
@@ -396,7 +401,7 @@ with tab2:
                     c = float(conf_np[nd])
                     intensity = int(80 + c * 175)
                     color   = f"#{intensity:02x}1010"
-                    size    = int(10 + c * 25)
+                    size    = int(10 + c ** 0.5 * 60)
                     opacity = 0.5 + c * 0.5
                     title_str = f"#{nd} | True: {CORA_CLASSES[cls_idx]} | Pred: {CORA_CLASSES[int(pred_np[nd])]} | Conf: {float(conf_np[nd]):.0%} | ❌"
                 net.add_node(nd,
@@ -450,11 +455,11 @@ with tab2:
         )
 
     if mode == "Class Filter":
-        cache_key = "v8_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
+        cache_key = "v9_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
     elif mode in ["In-Degree (Citations Received)", "Out-Degree (Papers Cited)"]:
-        cache_key = f"v8_pyvis_html_{mode}_{node_filter}"
+        cache_key = f"v9_pyvis_html_{mode}_{node_filter}"
     else:
-        cache_key = f"v8_pyvis_html_{mode}"
+        cache_key = f"v9_pyvis_html_{mode}"
 
     if cache_key not in st.session_state:
         st.session_state[cache_key] = build_pyvis_graph(mode, selected_classes, st.session_state, node_filter)
