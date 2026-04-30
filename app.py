@@ -166,7 +166,8 @@ with tab1:
         st.subheader("Ego-Graph (mean α across 8 heads)")
         fig, ax = plt.subplots(figsize=(5, 5))
         _draw_ego(ax, node, st.session_state.ei, st.session_state.alpha1,
-                  st.session_state.labels)
+                  st.session_state.labels,
+                  pred_labels=st.session_state.pred)
         annotate_ego(ax, node, st.session_state.ei, st.session_state.alpha1,
                      st.session_state.labels)
         st.pyplot(fig)
@@ -178,6 +179,7 @@ with tab1:
         for h, ax in enumerate(axes.flatten()):
             _draw_ego(ax, node, st.session_state.ei,
                       st.session_state.alpha1, st.session_state.labels,
+                      pred_labels=st.session_state.pred,
                       head=h, show_title=False, uniform_line=False)
             ax.set_title(f"Head {h+1}", fontsize=8)
             annotate_ego(ax, node, st.session_state.ei,
