@@ -316,8 +316,8 @@ with tab2:
             cls_idx   = int(labels_np[nd])
             base_rgba = PALETTE[cls_idx]
             base_hex  = rgba_to_hex(base_rgba)
-            x_pos = float(st.session_state.node_positions[nd][0]) * 4500
-            y_pos = float(st.session_state.node_positions[nd][1]) * 4500
+            x_pos = float(st.session_state.node_positions[nd][0]) * 3000
+            y_pos = float(st.session_state.node_positions[nd][1]) * 3000
 
             if mode == "Class Filter":
                 if CORA_CLASSES[cls_idx] in selected_classes:
@@ -464,11 +464,11 @@ with tab2:
         )
 
     if mode == "Class Filter":
-        cache_key = "v10_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
+        cache_key = "v11_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
     elif mode in ["In-Degree (Citations Received)", "Out-Degree (Papers Cited)"]:
-        cache_key = f"v10_pyvis_html_{mode}_{node_filter}"
+        cache_key = f"v11_pyvis_html_{mode}_{node_filter}"
     else:
-        cache_key = f"v10_pyvis_html_{mode}"
+        cache_key = f"v11_pyvis_html_{mode}"
 
     if cache_key not in st.session_state:
         st.session_state[cache_key] = build_pyvis_graph(mode, selected_classes, st.session_state, node_filter)
