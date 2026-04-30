@@ -371,7 +371,7 @@ with tab2:
                     continue
                 raw = float(in_deg_np[nd])
                 norm = (raw / (in_deg_max + 1e-6)) ** 0.5
-                node_size = int(5 + norm * 65)
+                node_size = int(12 + norm * 53)
                 net.add_node(nd,
                     label="",
                     color={"background": base_hex, "border": base_hex,
@@ -389,7 +389,7 @@ with tab2:
                     continue
                 raw = float(out_deg_np[nd])
                 norm = (raw / (out_deg_max + 1e-6)) ** 0.5
-                node_size = int(5 + norm * 65)
+                node_size = int(12 + norm * 53)
                 net.add_node(nd,
                     label="",
                     color={"background": base_hex, "border": base_hex,
@@ -464,11 +464,11 @@ with tab2:
         )
 
     if mode == "Class Filter":
-        cache_key = "v11_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
+        cache_key = "v12_pyvis_html_Class Filter_" + "_".join(sorted(selected_classes))
     elif mode in ["In-Degree (Citations Received)", "Out-Degree (Papers Cited)"]:
-        cache_key = f"v11_pyvis_html_{mode}_{node_filter}"
+        cache_key = f"v12_pyvis_html_{mode}_{node_filter}"
     else:
-        cache_key = f"v11_pyvis_html_{mode}"
+        cache_key = f"v12_pyvis_html_{mode}"
 
     if cache_key not in st.session_state:
         st.session_state[cache_key] = build_pyvis_graph(mode, selected_classes, st.session_state, node_filter)
