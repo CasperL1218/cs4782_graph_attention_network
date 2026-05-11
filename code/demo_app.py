@@ -5,7 +5,7 @@ import sys
 # Defaults to /tmp/pyg_data, which works on Mac and Linux without any config.
 DATA_ROOT = os.environ.get("CORA_DATA_ROOT", "/tmp/pyg_data")
 
-sys.path.insert(0, "code")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import streamlit as st
 import torch
@@ -23,7 +23,7 @@ from visualize_attention_v2 import (
     CORA_CLASSES, PALETTE
 )
 
-CHECKPOINT = "cora_best.pt"
+CHECKPOINT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../results/cora_best.pt")
 
 st.set_page_config(layout="wide", page_title="GAT Visualizer")
 st.title("Graph Attention Network — Cora Interactive Visualizer")

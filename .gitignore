@@ -213,5 +213,6 @@ __marimo__/
 *.pt
 *.pth
 *.ckpt
+!results/*.pt
 local_files/
 *.ipynb_checkpoints
